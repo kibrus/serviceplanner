@@ -450,10 +450,12 @@ export default function App() {
         u.push(key);
         if (reason) { sv.blockouts = sv.blockouts || {}; sv.blockouts[me] = sv.blockouts[me] || {}; sv.blockouts[me][key] = reason; }
       }
-      if (cancelRoles && cancelRoles.length) {
-        cancelRoles.forEach(role => { delete sv.assignments[key][role]; });
-        const roleList = cancelRoles.join(", ");
-        notifyAdmins(d, sv, `${nameOf(me)} marked ${labelFor(sv, key)} unavailable${reason ? ` (${reason})` : ""} and can't make it. ${roleList} ${cancelRoles.length > 1 ? "are" : "is"} now open (${s.name}).`, me);
+      if (i < 0) {
+        const baseMsg = cancelRoles && cancelRoles.length
+          ? `${nameOf(me)} marked ${labelFor(sv, key)} unavailable${reason ? ` (${reason})` : ""} and can't make it. ${cancelRoles.join(", ")} ${cancelRoles.length > 1 ? "are" : "is"} now open (${s.name}).`
+          : `${nameOf(me)} marked ${labelFor(sv, key)} as unavailable${reason ? ` (${reason})` : ""} (${s.name}).`;
+        if (cancelRoles && cancelRoles.length) cancelRoles.forEach(role => { delete sv.assignments[key][role]; });
+        Object.keys(sv.members).forEach(em => { if (em !== me) pushNotif(d, em, baseMsg); });
       }
     });
     if (off) return doToggle(null, null);
@@ -1102,6 +1104,21 @@ export default function App() {
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900">{nameOf(em)}{em === me && " (you)"}</p>
                       <p className="text-xs text-gray-400">{m.none ? "None (not auto-assigned)" : m.roles.length ? m.roles.join(" · ") : "Any role"}</p>
+                      {(() => {
+                        const t = todayStr();
+                        const unav = (s.unavailable[em] || [])
+                          .filter(k => { const dte = dateFor(s, k); return dte && dte >= t; })
+                          .sort((a, b) => (dateFor(s, a) || "").localeCompare(dateFor(s, b) || ""));
+                        if (!unav.length) return null;
+                        return (
+                          <p className="text-xs text-red-500 mt-0.5">
+                            Unavailable: {unav.map(k => {
+                              const reason = (isAdmin || em === me) ? s.blockouts?.[em]?.[k] : null;
+                              return labelFor(s, k) + (reason ? ` (${reason})` : "");
+                            }).join(", ")}
+                          </p>
+                        );
+                      })()}
                       {(isAdmin || em === me) && (data.users[em]?.phone || data.users[em]?.dob) && (
                         <p className="text-xs text-gray-500 mt-0.5">
                           {data.users[em].phone && <>📱 {data.users[em].phone}</>}
