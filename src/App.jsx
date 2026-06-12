@@ -9,6 +9,9 @@ const GlobalStyle = () => (
     html,body{margin:0;padding:0;}
     .vh-fix{min-height:100vh;min-height:100dvh;}
     .safe-bottom{padding-bottom:env(safe-area-inset-bottom);}
+    .safe-top{padding-top:env(safe-area-inset-top);}
+    input[type="date"]{-webkit-appearance:none;appearance:none;background:#fff;min-height:40px;width:100%;max-width:100%;box-sizing:border-box;text-align:left;color:#374151;display:block;}
+    input[type="date"]::-webkit-date-and-time-value{text-align:left;}
     .app-font{font-family:'Schibsted Grotesk',-apple-system,'Segoe UI',sans-serif;}
     .font-display{font-family:'Fraunces',Georgia,serif;letter-spacing:-0.01em;}
     .btn-brand{background:var(--brand);color:#fff;transition:background .15s,transform .1s;}
@@ -162,7 +165,7 @@ const Shell = ({ title, back, right, children, msg, unread, view, setView, refre
   <div className="vh-fix bg-paper app-font">
     <GlobalStyle />
     <div className="max-w-md mx-auto vh-fix bg-white flex flex-col soft-shadow">
-      <div className="sticky top-0 nav-blur border-b border-gray-100 px-4 py-3.5 flex items-center justify-between z-10">
+      <div className="sticky top-0 nav-blur border-b border-gray-100 px-4 py-3.5 flex items-center justify-between z-10 safe-top">
         <div className="flex items-center gap-2">
           {back && <button onClick={back} className="text-gray-500 hover:text-gray-800 -ml-1 p-1"><ChevronLeft size={20} /></button>}
           <h1 className="text-lg font-display font-semibold text-gray-900">{title}{title === "ServicePlanner" && <span className="gold">.</span>}</h1>
@@ -291,7 +294,7 @@ export default function App() {
       }
     };
     return (
-      <div className="vh-fix bg-paper app-font flex items-center justify-center p-4">
+      <div className="vh-fix bg-paper app-font flex items-center justify-center p-4 safe-top">
         <GlobalStyle />
         <div className="w-full max-w-sm bg-white rounded-2xl soft-shadow border border-gray-100 p-8 fade-in">
           <h1 className="text-3xl font-display font-semibold text-gray-900">ServicePlanner<span className="gold">.</span></h1>
@@ -1277,6 +1280,7 @@ export default function App() {
                   </div>
                 ))}
                 <div className="mt-2">
+                  <p className="text-xs text-gray-500 mb-1 flex items-center gap-1"><Calendar size={12} />Event date</p>
                   <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 mb-2"
                     value={form.evtDate || ""} onChange={e => setForm({ ...form, evtDate: e.target.value })} />
                   <div className="flex gap-2">
