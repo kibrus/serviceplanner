@@ -359,6 +359,7 @@ export default function App() {
       notifyAdmins(d, d.services[svc.id], `${nameOf(me)} joined ${svc.name} using the join code.`, me);
     });
     setForm({ ...form, joinCode: "" });
+    setView({ page: "home" });
     flash(`You joined ${svc.name}!`);
   };
 
@@ -676,7 +677,7 @@ export default function App() {
           </button>
         ) : myServices.length > 0 && (
           <div className="border border-gray-100 rounded-2xl p-5 mb-5 bg-paper">
-            <p className="text-sm text-gray-500">You're not scheduled for anything yet. Enjoy the rest 😌</p>
+            <p className="text-sm text-gray-500">You're not scheduled for anything yet.</p>
           </div>
         )}
 
