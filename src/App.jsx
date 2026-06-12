@@ -808,8 +808,14 @@ export default function App() {
                 placeholder="Phone number (e.g. 713-555-0123)" value={form.phone ?? (data.users[me].phone || "")}
                 onChange={e => setForm({ ...form, phone: e.target.value })} />
               <label className="text-xs text-gray-500 block mb-1">Date of birth</label>
-              <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 text-gray-700"
-                value={form.dob ?? (data.users[me].dob || "")} onChange={e => setForm({ ...form, dob: e.target.value })} />
+              <div className="relative mb-3">
+                <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white flex items-center gap-2">
+                  <Calendar size={14} className="text-gray-400 shrink-0" />
+                  {(form.dob ?? data.users[me].dob) ? <span className="text-gray-700">{fmtFull(form.dob ?? data.users[me].dob)}</span> : <span className="text-gray-400">Pick your date of birth</span>}
+                </div>
+                <input type="date" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  value={form.dob ?? (data.users[me].dob || "")} onChange={e => setForm({ ...form, dob: e.target.value })} />
+              </div>
               <div className="flex gap-2">
                 <button onClick={() => {
                   const phone = (form.phone ?? data.users[me].phone ?? "").trim();
@@ -1280,9 +1286,14 @@ export default function App() {
                   </div>
                 ))}
                 <div className="mt-2">
-                  <p className="text-xs text-gray-500 mb-1 flex items-center gap-1"><Calendar size={12} />Event date</p>
-                  <input type="date" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 mb-2"
-                    value={form.evtDate || ""} onChange={e => setForm({ ...form, evtDate: e.target.value })} />
+                  <div className="relative mb-2">
+                    <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white flex items-center gap-2">
+                      <Calendar size={14} className="text-gray-400 shrink-0" />
+                      {form.evtDate ? <span className="text-gray-700">{fmtFull(form.evtDate)}</span> : <span className="text-gray-400">Pick the event date</span>}
+                    </div>
+                    <input type="date" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      value={form.evtDate || ""} onChange={e => setForm({ ...form, evtDate: e.target.value })} />
+                  </div>
                   <div className="flex gap-2">
                     <input className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
                       placeholder="Event name (e.g. Christmas Eve)" value={form.evtName || ""} onChange={e => setForm({ ...form, evtName: e.target.value })} />
