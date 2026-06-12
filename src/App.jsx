@@ -6,6 +6,9 @@ const GlobalStyle = () => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap');
     :root{--brand:#24569F;--brand-dark:#1B4480;--gold:#C99A2E;--paper:#FBFAF8;}
+    html,body{margin:0;padding:0;}
+    .vh-fix{min-height:100vh;min-height:100dvh;}
+    .safe-bottom{padding-bottom:env(safe-area-inset-bottom);}
     .app-font{font-family:'Schibsted Grotesk',-apple-system,'Segoe UI',sans-serif;}
     .font-display{font-family:'Fraunces',Georgia,serif;letter-spacing:-0.01em;}
     .btn-brand{background:var(--brand);color:#fff;transition:background .15s,transform .1s;}
@@ -156,9 +159,9 @@ const ShareModal = ({ share, setShare, flash }) => {
 };
 
 const Shell = ({ title, back, right, children, msg, unread, view, setView, refresh, confirm, setConfirm, share, setShare, flash }) => (
-  <div className="min-h-screen bg-paper app-font">
+  <div className="vh-fix bg-paper app-font">
     <GlobalStyle />
-    <div className="max-w-md mx-auto min-h-screen bg-white flex flex-col soft-shadow">
+    <div className="max-w-md mx-auto vh-fix bg-white flex flex-col soft-shadow">
       <div className="sticky top-0 nav-blur border-b border-gray-100 px-4 py-3.5 flex items-center justify-between z-10">
         <div className="flex items-center gap-2">
           {back && <button onClick={back} className="text-gray-500 hover:text-gray-800 -ml-1 p-1"><ChevronLeft size={20} /></button>}
@@ -171,7 +174,7 @@ const Shell = ({ title, back, right, children, msg, unread, view, setView, refre
       </div>
       {msg && <div className={`mx-4 mt-3 text-sm px-3 py-2 rounded-xl flex items-center gap-2 fade-in ${msg.kind === "error" ? "bg-red-50 text-red-700" : "bg-blue-50 text-brand"}`}><AlertCircle size={15} className="shrink-0" />{msg.text}</div>}
       <div className="flex-1 p-4 pb-24 fade-in">{children}</div>
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md nav-blur border-t border-gray-100 flex z-20">
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md nav-blur border-t border-gray-100 flex z-20 safe-bottom">
         <NavBtn icon={Home} label="Home" page="home" view={view} setView={setView} />
         <NavBtn icon={Plus} label="New" page="create" view={view} setView={setView} />
         <NavBtn icon={Bell} label="Alerts" page="alerts" badge={unread} view={view} setView={setView} />
@@ -288,7 +291,7 @@ export default function App() {
       }
     };
     return (
-      <div className="min-h-screen bg-paper app-font flex items-center justify-center p-4">
+      <div className="vh-fix bg-paper app-font flex items-center justify-center p-4">
         <GlobalStyle />
         <div className="w-full max-w-sm bg-white rounded-2xl soft-shadow border border-gray-100 p-8 fade-in">
           <h1 className="text-3xl font-display font-semibold text-gray-900">ServicePlanner<span className="gold">.</span></h1>
@@ -315,7 +318,7 @@ export default function App() {
     );
   }
 
-  if (!data) return <div className="min-h-screen bg-paper app-font flex items-center justify-center text-gray-400"><GlobalStyle />Loading…</div>;
+  if (!data) return <div className="vh-fix bg-paper app-font flex items-center justify-center text-gray-400"><GlobalStyle />Loading…</div>;
 
   /* ---------- DERIVED + SHELL PROPS ---------- */
   const myServices = Object.values(data.services).filter(s => s.members[me]);
