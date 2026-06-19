@@ -33,7 +33,7 @@ const GlobalStyle = () => (
   `}</style>
 );
 const EMPTY = { users: {}, services: {}, notifs: {} };
-const APP_VERSION = "0.3";
+const APP_VERSION = "0.4";
 const load = async () => {
   const { data, error } = await supabase.from("app_state").select("data").eq("id", 1).maybeSingle();
   if (error) { console.error("load failed", error); return null; }
@@ -853,7 +853,6 @@ export default function App() {
     const target = view.page === "member" ? view.email : me;
     const isSelf = target === me;
     const u = data.users[target] || { name: target, email: target };
-    const canSeePrivate = isSelf || myServices.some(s => s.members[me]?.admin && s.members[target]);
     const sharedServices = myServices.filter(s => s.members[target]);
     const profServices = isSelf ? myServices : sharedServices;
     const tab = view.ptab || "general";
@@ -873,7 +872,7 @@ export default function App() {
         <div className="flex flex-col items-center text-center mb-5">
           <Avatar name={u.name} px={72} />
           <p className="font-display font-semibold text-gray-900 text-xl mt-3">{u.name}{isSelf && " (you)"}</p>
-          {canSeePrivate ? <p className="text-sm text-gray-500">{u.email}</p> : <p className="text-xs text-gray-400 mt-1">Contact info is private</p>}
+          <p className="text-sm text-gray-500">{u.email}</p>
         </div>
 
         <div className="flex gap-1 bg-gray-50 rounded-xl p-1 mb-4">
@@ -892,31 +891,25 @@ export default function App() {
                     className="text-xs text-brand flex items-center gap-1"><Edit3 size={12} />Edit</button>
                 )}
               </div>
-              {isSelf && <p className="text-xs text-gray-400 mb-3">Only you and the admins of your services can see your phone and birthday.</p>}
+              {isSelf && <p className="text-xs text-gray-400 mb-3">Your team can see this info on your profile.</p>}
               {!(isSelf && expanded.editProfile) ? (
                 <div className="divide-y divide-gray-100">
                   <div className="flex items-center justify-between py-2.5">
                     <span className="text-sm text-gray-500">Name</span>
                     <span className="text-sm text-gray-800">{u.name}</span>
                   </div>
-                  {canSeePrivate && (
-                    <div className="flex items-center justify-between py-2.5">
-                      <span className="text-sm text-gray-500">Email</span>
-                      <span className="text-sm text-gray-800">{u.email}</span>
-                    </div>
-                  )}
-                  {canSeePrivate && (
-                    <div className="flex items-center justify-between py-2.5">
-                      <span className="text-sm text-gray-500">Phone</span>
-                      {u.phone ? <a href={`tel:${u.phone}`} className="text-sm text-brand">{u.phone}</a> : <span className="text-sm text-gray-400">Not set</span>}
-                    </div>
-                  )}
-                  {canSeePrivate && (
-                    <div className="flex items-center justify-between py-2.5">
-                      <span className="text-sm text-gray-500">Birthday</span>
-                      <span className="text-sm text-gray-800">{u.dob ? fmtFull(u.dob) : <span className="text-gray-400">Not set</span>}</span>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between py-2.5">
+                    <span className="text-sm text-gray-500">Email</span>
+                    <span className="text-sm text-gray-800 truncate ml-3">{u.email}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2.5">
+                    <span className="text-sm text-gray-500">Phone</span>
+                    {u.phone ? <a href={`tel:${u.phone}`} className="text-sm text-brand">{u.phone}</a> : <span className="text-sm text-gray-400">Not set</span>}
+                  </div>
+                  <div className="flex items-center justify-between py-2.5">
+                    <span className="text-sm text-gray-500">Birthday</span>
+                    <span className="text-sm text-gray-800">{u.dob ? fmtFull(u.dob) : <span className="text-gray-400">Not set</span>}</span>
+                  </div>
                 </div>
               ) : (
                 <div>
@@ -951,17 +944,6 @@ export default function App() {
                   </div>
                 </div>
               )}
-            </div>
-
-            <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase mb-2 mt-1">{isSelf ? "My services" : "Shared services"}</p>
-            <div className="border border-gray-100 rounded-2xl bg-white divide-y divide-gray-100 mb-5">
-              {profServices.map(s => (
-                <div key={s.id} className="px-4 py-3">
-                  <p className="text-sm text-gray-800">{s.name}</p>
-                  <p className="text-xs text-gray-400">{s.members[target].admin ? "Admin" : "Member"}{s.members[target].none ? " · None (not auto-assigned)" : s.members[target].roles.length > 0 ? ` · ${s.members[target].roles.join(", ")}` : ""} · served {countAll(s, target)} time{countAll(s, target) !== 1 ? "s" : ""}</p>
-                </div>
-              ))}
-              {profServices.length === 0 && <p className="px-4 py-3 text-sm text-gray-400">No services</p>}
             </div>
 
             {isSelf && (
@@ -1300,13 +1282,6 @@ export default function App() {
                           </p>
                         );
                       })()}
-                      {(isAdmin || em === me) && (data.users[em]?.phone || data.users[em]?.dob) && (
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {data.users[em].phone && <>📱 {data.users[em].phone}</>}
-                          {data.users[em].phone && data.users[em].dob && " · "}
-                          {data.users[em].dob && <>🎂 {fmt(data.users[em].dob)}</>}
-                        </p>
-                      )}
                     </div>
                     </button>
                     {m.admin && <Badge color="purple"><Shield size={10} className="inline mr-0.5" />Admin</Badge>}
