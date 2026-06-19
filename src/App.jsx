@@ -33,6 +33,7 @@ const GlobalStyle = () => (
   `}</style>
 );
 const EMPTY = { users: {}, services: {}, notifs: {} };
+const APP_VERSION = "0.2";
 const load = async () => {
   const { data, error } = await supabase.from("app_state").select("data").eq("id", 1).maybeSingle();
   if (error) { console.error("load failed", error); return null; }
@@ -235,6 +236,15 @@ export default function App() {
       update(d => { d.users[me] = { name: displayName, email: me }; });
     }
   }, [me, data]);
+
+  // Auto-mark alerts as read shortly after the user opens the Alerts page
+  useEffect(() => {
+    if (view.page !== "alerts" || !me || !data) return;
+    const hasUnread = (data.notifs[me] || []).some(n => !n.read);
+    if (!hasUnread) return;
+    const t = setTimeout(() => { update(d => (d.notifs[me] || []).forEach(n => n.read = true)); }, 1500);
+    return () => clearTimeout(t);
+  }, [view.page, me, data]);
 
   const flash = (text, kind = "info") => { setMsg({ text, kind }); setTimeout(() => setMsg(null), 4000); };
   const ask = (c) => setConfirm({ ...c, id: uid() });
@@ -765,10 +775,14 @@ export default function App() {
   /* ---------- ALERTS ---------- */
   if (view.page === "alerts") {
     return (
-      <Shell title="Alerts" {...shellProps} right={unread > 0 && (
-        <button onClick={() => update(d => (d.notifs[me] || []).forEach(n => n.read = true))} className="text-xs text-brand">Mark all read</button>
+      <Shell title="Alerts" {...shellProps} right={myNotifs.length > 0 && (
+        <button onClick={() => ask({
+          text: "Clear all alerts? This permanently deletes them.",
+          danger: true, yesLabel: "Clear all",
+          onYes: () => update(d => { d.notifs[me] = []; }),
+        })} className="text-xs text-red-500 flex items-center gap-1"><Trash2 size={12} />Clear all</button>
       )}>
-        {myNotifs.length === 0 && <p className="text-sm text-gray-400 text-center mt-10">No alerts yet. You'll see assignment, swap, and invite notifications here.</p>}
+        {myNotifs.length === 0 && <p className="text-sm text-gray-400 text-center mt-10">No alerts right now. You'll see assignment, swap, and invite notifications here.</p>}
         {myNotifs.map(n => (
           <div key={n.id} className={`rounded-xl p-3.5 mb-2 border ${n.read ? "border-gray-100 bg-white" : "border-blue-200 bg-blue-50"}`}>
             <p className="text-sm text-gray-800">{n.text}</p>
@@ -780,74 +794,166 @@ export default function App() {
   }
 
   /* ---------- PROFILE ---------- */
-  if (view.page === "profile") {
+  if (view.page === "profile" || view.page === "member") {
+    const target = view.page === "member" ? view.email : me;
+    const isSelf = target === me;
+    const u = data.users[target] || { name: target, email: target };
+    const canSeePrivate = isSelf || myServices.some(s => s.members[me]?.admin && s.members[target]);
+    const sharedServices = myServices.filter(s => s.members[target]);
+    const profServices = isSelf ? myServices : sharedServices;
+    const tab = view.ptab || "general";
+    const setPtab = (t) => setView({ ...view, ptab: t });
+
+    // collect this person's upcoming unavailable days across shared/own services
+    const t0 = todayStr();
+    const availByService = profServices.map(s => {
+      const unav = (s.unavailable[target] || [])
+        .filter(k => { const dte = dateFor(s, k); return dte && dte >= t0; })
+        .sort((a, b) => (dateFor(s, a) || "").localeCompare(dateFor(s, b) || ""));
+      return { s, unav };
+    });
+
     return (
-      <Shell title="Profile" {...shellProps}>
-        <div className="flex items-center gap-3 mb-6">
-          <Avatar name={nameOf(me)} px={48} />
+      <Shell title={isSelf ? "Profile" : nameOf(target)} {...shellProps} back={isSelf ? null : () => setView({ page: "service", svcId: view.svcId, tab: "team" })}>
+        <div className="flex flex-col items-center text-center mb-5">
+          <Avatar name={u.name} px={72} />
+          <p className="font-display font-semibold text-gray-900 text-xl mt-3">{u.name}{isSelf && " (you)"}</p>
+          {canSeePrivate ? <p className="text-sm text-gray-500">{u.email}</p> : <p className="text-xs text-gray-400 mt-1">Contact info is private</p>}
+        </div>
+
+        <div className="flex gap-1 bg-gray-50 rounded-xl p-1 mb-4">
+          <button onClick={() => setPtab("general")} className={`flex-1 text-sm py-2 rounded-lg font-medium ${tab === "general" ? "btn-brand text-white" : "text-gray-500"}`}>General</button>
+          <button onClick={() => setPtab("availability")} className={`flex-1 text-sm py-2 rounded-lg font-medium ${tab === "availability" ? "btn-brand text-white" : "text-gray-500"}`}>Availability</button>
+        </div>
+
+        {tab === "general" && (
           <div>
-            <p className="font-medium text-gray-900">{nameOf(me)}</p>
-            <p className="text-sm text-gray-500">{me}</p>
-          </div>
-        </div>
-
-        <div className="border border-gray-100 rounded-2xl bg-white p-4 mb-4">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-sm font-medium text-gray-700">My info</p>
-            {!expanded.editProfile && (
-              <button onClick={() => setExpanded({ ...expanded, editProfile: true })}
-                className="text-xs text-brand flex items-center gap-1"><Edit3 size={12} />{data.users[me].phone || data.users[me].dob ? "Edit" : "Complete profile"}</button>
-            )}
-          </div>
-          <p className="text-xs text-gray-400 mb-3">Only you and the admins of your services can see this.</p>
-          {!expanded.editProfile ? (
-            <div>
-              <p className="text-sm text-gray-700 mb-1">📱 {data.users[me].phone || <span className="text-gray-400">No phone number yet</span>}</p>
-              <p className="text-sm text-gray-700">🎂 {data.users[me].dob ? fmtFull(data.users[me].dob) : <span className="text-gray-400">No date of birth yet</span>}</p>
-            </div>
-          ) : (
-            <div>
-              <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                placeholder="Phone number (e.g. 713-555-0123)" value={form.phone ?? (data.users[me].phone || "")}
-                onChange={e => setForm({ ...form, phone: e.target.value })} />
-              <label className="text-xs text-gray-500 block mb-1">Date of birth</label>
-              <div className="relative mb-3">
-                <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white flex items-center gap-2">
-                  <Calendar size={14} className="text-gray-400 shrink-0" />
-                  {(form.dob ?? data.users[me].dob) ? <span className="text-gray-700">{fmtFull(form.dob ?? data.users[me].dob)}</span> : <span className="text-gray-400">Pick your date of birth</span>}
+            <div className="border border-gray-100 rounded-2xl bg-white p-4 mb-4">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-sm font-semibold text-gray-700">Personal info</p>
+                {isSelf && !expanded.editProfile && (
+                  <button onClick={() => setExpanded({ ...expanded, editProfile: true })}
+                    className="text-xs text-brand flex items-center gap-1"><Edit3 size={12} />Edit</button>
+                )}
+              </div>
+              {isSelf && <p className="text-xs text-gray-400 mb-3">Only you and the admins of your services can see your phone and birthday.</p>}
+              {!(isSelf && expanded.editProfile) ? (
+                <div className="divide-y divide-gray-100">
+                  <div className="flex items-center justify-between py-2.5">
+                    <span className="text-sm text-gray-500">Name</span>
+                    <span className="text-sm text-gray-800">{u.name}</span>
+                  </div>
+                  {canSeePrivate && (
+                    <div className="flex items-center justify-between py-2.5">
+                      <span className="text-sm text-gray-500">Email</span>
+                      <span className="text-sm text-gray-800">{u.email}</span>
+                    </div>
+                  )}
+                  {canSeePrivate && (
+                    <div className="flex items-center justify-between py-2.5">
+                      <span className="text-sm text-gray-500">Phone</span>
+                      {u.phone ? <a href={`tel:${u.phone}`} className="text-sm text-brand">{u.phone}</a> : <span className="text-sm text-gray-400">Not set</span>}
+                    </div>
+                  )}
+                  {canSeePrivate && (
+                    <div className="flex items-center justify-between py-2.5">
+                      <span className="text-sm text-gray-500">Birthday</span>
+                      <span className="text-sm text-gray-800">{u.dob ? fmtFull(u.dob) : <span className="text-gray-400">Not set</span>}</span>
+                    </div>
+                  )}
                 </div>
-                <input type="date" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  value={form.dob ?? (data.users[me].dob || "")} onChange={e => setForm({ ...form, dob: e.target.value })} />
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => {
-                  const phone = (form.phone ?? data.users[me].phone ?? "").trim();
-                  const dob = form.dob ?? data.users[me].dob ?? "";
-                  update(d => { d.users[me].phone = phone; d.users[me].dob = dob; });
-                  setForm({ ...form, phone: undefined, dob: undefined });
-                  setExpanded({ ...expanded, editProfile: false });
-                  flash("Profile saved");
-                }} className="flex-1 btn-brand text-white text-sm rounded-lg py-2 font-medium">Save</button>
-                <button onClick={() => { setForm({ ...form, phone: undefined, dob: undefined }); setExpanded({ ...expanded, editProfile: false }); }}
-                  className="flex-1 border border-gray-300 text-gray-700 text-sm rounded-lg py-2">Cancel</button>
-              </div>
+              ) : (
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Name</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    placeholder="Your name" value={form.pname ?? (u.name || "")} onChange={e => setForm({ ...form, pname: e.target.value })} />
+                  <label className="text-xs text-gray-500 block mb-1">Phone number</label>
+                  <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    placeholder="e.g. 713-555-0123" value={form.phone ?? (u.phone || "")} onChange={e => setForm({ ...form, phone: e.target.value })} />
+                  <label className="text-xs text-gray-500 block mb-1">Date of birth</label>
+                  <div className="relative mb-3">
+                    <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white flex items-center gap-2">
+                      <Calendar size={14} className="text-gray-400 shrink-0" />
+                      {(form.dob ?? u.dob) ? <span className="text-gray-700">{fmtFull(form.dob ?? u.dob)}</span> : <span className="text-gray-400">Pick your date of birth</span>}
+                    </div>
+                    <input type="date" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      value={form.dob ?? (u.dob || "")} onChange={e => setForm({ ...form, dob: e.target.value })} />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => {
+                      const name = (form.pname ?? u.name ?? "").trim();
+                      const phone = (form.phone ?? u.phone ?? "").trim();
+                      const dob = form.dob ?? u.dob ?? "";
+                      if (!name) return flash("Name can't be empty", "error");
+                      update(d => { d.users[me].name = name; d.users[me].phone = phone; d.users[me].dob = dob; });
+                      setForm({ ...form, pname: undefined, phone: undefined, dob: undefined });
+                      setExpanded({ ...expanded, editProfile: false });
+                      flash("Profile saved");
+                    }} className="flex-1 btn-brand text-white text-sm rounded-lg py-2 font-medium">Save</button>
+                    <button onClick={() => { setForm({ ...form, pname: undefined, phone: undefined, dob: undefined }); setExpanded({ ...expanded, editProfile: false }); }}
+                      className="flex-1 border border-gray-300 text-gray-700 text-sm rounded-lg py-2">Cancel</button>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        <div className="border border-gray-100 rounded-2xl bg-white divide-y divide-gray-100 mb-6">
-          {myServices.map(s => (
-            <div key={s.id} className="px-4 py-3">
-              <p className="text-sm text-gray-800">{s.name}</p>
-              <p className="text-xs text-gray-400">{s.members[me].admin ? "Admin" : "Member"}{s.members[me].roles.length > 0 && ` · ${s.members[me].roles.join(", ")}`} · served {countAll(s, me)} time{countAll(s, me) !== 1 ? "s" : ""}</p>
+            <p className="text-sm font-semibold text-gray-700 mb-2">{isSelf ? "My services" : "Shared services"}</p>
+            <div className="border border-gray-100 rounded-2xl bg-white divide-y divide-gray-100 mb-5">
+              {profServices.map(s => (
+                <div key={s.id} className="px-4 py-3">
+                  <p className="text-sm text-gray-800">{s.name}</p>
+                  <p className="text-xs text-gray-400">{s.members[target].admin ? "Admin" : "Member"}{s.members[target].none ? " · None (not auto-assigned)" : s.members[target].roles.length > 0 ? ` · ${s.members[target].roles.join(", ")}` : ""} · served {countAll(s, target)} time{countAll(s, target) !== 1 ? "s" : ""}</p>
+                </div>
+              ))}
+              {profServices.length === 0 && <p className="px-4 py-3 text-sm text-gray-400">No services</p>}
             </div>
-          ))}
-          {myServices.length === 0 && <p className="px-4 py-3 text-sm text-gray-400">No services yet</p>}
-        </div>
-        <button onClick={async () => { await supabase.auth.signOut(); setMe(null); setData(null); setView({ page: "home" }); }}
-          className="w-full border border-gray-300 text-gray-700 rounded-lg py-2.5 text-sm font-medium flex items-center justify-center gap-2">
-          <LogOut size={15} />Sign out
-        </button>
+
+            {isSelf && (
+              <button onClick={async () => { await supabase.auth.signOut(); setMe(null); setData(null); setView({ page: "home" }); }}
+                className="w-full border border-gray-300 text-gray-700 rounded-xl py-2.5 text-sm font-medium flex items-center justify-center gap-2 mb-4">
+                <LogOut size={15} />Sign out
+              </button>
+            )}
+
+            {isSelf && <p className="text-center text-xs text-gray-400 mb-2">ServicePlanner v{APP_VERSION}</p>}
+          </div>
+        )}
+
+        {tab === "availability" && (
+          <div>
+            <p className="text-xs text-gray-500 mb-3">{isSelf ? "Tap any day to mark yourself unavailable. Your team and admins can see this, and auto-assign will skip you." : "Days this person has marked unavailable."}</p>
+            {availByService.map(({ s, unav }) => {
+              const slots = slotsOf(s);
+              return (
+                <div key={s.id} className="border border-gray-100 rounded-2xl bg-white p-4 mb-3">
+                  <p className="text-sm font-semibold text-gray-800 mb-3">{s.name}</p>
+                  {isSelf ? (
+                    <div className="flex flex-wrap gap-2">
+                      {slots.map(sl => {
+                        const off = (s.unavailable[me] || []).includes(sl.key);
+                        return (
+                          <button key={sl.key} onClick={() => toggleUnavailable(s.id, sl.key)}
+                            className={`text-xs px-3 py-1.5 rounded-full border ${off ? "bg-red-50 text-red-700 border-red-200" : "border-gray-200 text-gray-600"}`}>
+                            {off && <X size={10} className="inline mr-1" />}{fmt(sl.date)}{sl.name && <Star size={9} className="inline ml-1" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : unav.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {unav.map(k => (
+                        <span key={k} className="text-xs px-3 py-1.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+                          <X size={10} className="inline mr-1" />{labelFor(s, k)}
+                        </span>
+                      ))}
+                    </div>
+                  ) : <p className="text-xs text-gray-400">Available for all upcoming days</p>}
+                </div>
+              );
+            })}
+            {profServices.length === 0 && <p className="text-sm text-gray-400">No services yet</p>}
+          </div>
+        )}
       </Shell>
     );
   }
@@ -1100,6 +1206,7 @@ export default function App() {
               return (
                 <div key={em} className="border border-gray-100 rounded-2xl bg-white px-4 py-3 mb-2">
                   <div className="flex items-center gap-3">
+                    <button onClick={() => setView({ page: "member", email: em, svcId: s.id, ptab: "general" })} className="flex items-center gap-3 flex-1 text-left">
                     <Avatar name={nameOf(em)} />
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900">{nameOf(em)}{em === me && " (you)"}</p>
@@ -1127,6 +1234,7 @@ export default function App() {
                         </p>
                       )}
                     </div>
+                    </button>
                     {m.admin && <Badge color="purple"><Shield size={10} className="inline mr-0.5" />Admin</Badge>}
                     {(isAdmin || em === me) && <button onClick={() => setExpanded({ ...expanded, ["edit-" + em]: !isEditing })}
                       className="text-gray-400 hover:text-gray-700"><Edit3 size={15} /></button>}
@@ -1362,10 +1470,6 @@ export default function App() {
                   <button onClick={() => sendReminders(s.id, editKey)}
                     className="flex-1 border border-gray-300 text-gray-700 text-xs rounded-lg py-2 flex items-center justify-center gap-1"><Send size={12} />Send reminders</button>
                 </div>
-                <button onClick={() => autoAssign(s.id, slots.map(sl => sl.key))}
-                  className="w-full mt-2 btn-brand text-white text-xs rounded-lg py-2 font-medium flex items-center justify-center gap-1">
-                  <RefreshCw size={12} />Auto-assign everything upcoming
-                </button>
                 <div className="flex gap-2 mt-2">
                   <button onClick={() => setShare({ title: `Share: ${labelFor(s, editKey)}`, text: buildDayText(s, editKey) })}
                     className="flex-1 border border-green-300 text-green-700 text-xs rounded-lg py-2 flex items-center justify-center gap-1"><Share2 size={12} />WhatsApp summary</button>
