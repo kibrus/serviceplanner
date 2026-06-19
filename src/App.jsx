@@ -33,7 +33,7 @@ const GlobalStyle = () => (
   `}</style>
 );
 const EMPTY = { users: {}, services: {}, notifs: {} };
-const APP_VERSION = "0.2";
+const APP_VERSION = "0.3";
 const load = async () => {
   const { data, error } = await supabase.from("app_state").select("data").eq("id", 1).maybeSingle();
   if (error) { console.error("load failed", error); return null; }
@@ -536,11 +536,21 @@ export default function App() {
     });
   };
 
-  const autoAssign = (svcId, keys) => {
+  const autoAssign = (svcId, keys, clearFirst) => {
     let made = 0;
     update(d => {
       const s = d.services[svcId];
       const rules = s.rules || {};
+      if (clearFirst) {
+        keys.forEach(key => {
+          const asg = s.assignments[key] || {};
+          Object.entries(asg).forEach(([role, a]) => {
+            if (a.email) pushNotif(d, a.email, `Your ${role} assignment on ${labelFor(s, key)} (${s.name}) was cleared by an admin who reassigned the day.`);
+          });
+          s.assignments[key] = {};
+          s.swaps = (s.swaps || []).filter(sw => sw.key !== key);
+        });
+      }
       const countFor = (em) => Object.values(s.assignments).reduce((n, day) =>
         n + Object.values(day).filter(a => a.email === em).length, 0);
       const monthCount = (em, month) => Object.entries(s.assignments).reduce((n, [k, day]) =>
@@ -579,6 +589,51 @@ export default function App() {
       });
     });
     flash(n ? `Reminders sent to ${n} member${n > 1 ? "s" : ""}` : "Everyone is confirmed already!");
+  };
+
+  const changePassword = () => {
+    ask({
+      text: "Enter a new password (at least 6 characters).",
+      withInput: "New password", yesLabel: "Update password",
+      onYes: async (newPass) => {
+        if (!newPass || newPass.length < 6) return flash("Password must be at least 6 characters", "error");
+        const { error } = await supabase.auth.updateUser({ password: newPass });
+        if (error) return flash(error.message, "error");
+        flash("Password updated");
+      },
+    });
+  };
+
+  const deleteAccount = () => {
+    ask({
+      text: "Delete your account? This removes you from all your services and signs you out. Services where you're the only admin must have admin transferred first. This cannot be undone.",
+      danger: true, yesLabel: "Delete my account",
+      onYes: async () => {
+        const blocking = Object.values(data.services).filter(s => {
+          if (!s.members[me]) return false;
+          const admins = Object.entries(s.members).filter(([, m]) => m.admin).map(([e]) => e);
+          const others = Object.keys(s.members).filter(e => e !== me);
+          return s.members[me].admin && admins.length === 1 && others.length > 0;
+        });
+        if (blocking.length) return flash(`You're the only admin of ${blocking.map(s => s.name).join(", ")}. Transfer admin there first.`, "error");
+        update(d => {
+          Object.values(d.services).forEach(s => {
+            if (!s.members[me]) return;
+            delete s.members[me];
+            Object.keys(s.assignments).forEach(k => Object.entries(s.assignments[k]).forEach(([role, a]) => { if (a.email === me) delete s.assignments[k][role]; }));
+            s.swaps = (s.swaps || []).filter(sw => sw.from !== me && sw.to !== me);
+            if (s.unavailable) delete s.unavailable[me];
+            if (s.blockouts) delete s.blockouts[me];
+            if (Object.keys(s.members).length === 0) delete d.services[s.id];
+          });
+          delete d.users[me];
+          delete d.notifs[me];
+        });
+        await supabase.auth.signOut();
+        flash("Account deleted");
+        setMe(null); setData(null); setView({ page: "home" });
+      },
+    });
   };
 
   const inviteByEmail = (svcId) => {
@@ -828,7 +883,8 @@ export default function App() {
 
         {tab === "general" && (
           <div>
-            <div className="border border-gray-100 rounded-2xl bg-white p-4 mb-4">
+            <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase mb-2 mt-1">Account</p>
+            <div className="border border-gray-100 rounded-2xl bg-white p-4 mb-5">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-sm font-semibold text-gray-700">Personal info</p>
                 {isSelf && !expanded.editProfile && (
@@ -897,7 +953,7 @@ export default function App() {
               )}
             </div>
 
-            <p className="text-sm font-semibold text-gray-700 mb-2">{isSelf ? "My services" : "Shared services"}</p>
+            <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase mb-2 mt-1">{isSelf ? "My services" : "Shared services"}</p>
             <div className="border border-gray-100 rounded-2xl bg-white divide-y divide-gray-100 mb-5">
               {profServices.map(s => (
                 <div key={s.id} className="px-4 py-3">
@@ -909,13 +965,31 @@ export default function App() {
             </div>
 
             {isSelf && (
-              <button onClick={async () => { await supabase.auth.signOut(); setMe(null); setData(null); setView({ page: "home" }); }}
-                className="w-full border border-gray-300 text-gray-700 rounded-xl py-2.5 text-sm font-medium flex items-center justify-center gap-2 mb-4">
-                <LogOut size={15} />Sign out
-              </button>
-            )}
+              <>
+                <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase mb-2">Security</p>
+                <button onClick={changePassword}
+                  className="w-full border border-gray-100 rounded-2xl bg-white px-4 py-3.5 mb-5 flex items-center justify-between card-press">
+                  <span className="flex items-center gap-2.5 text-sm text-gray-800"><Shield size={16} className="text-gray-400" />Change password</span>
+                  <ChevronLeft size={16} className="text-gray-300 rotate-180" />
+                </button>
 
-            {isSelf && <p className="text-center text-xs text-gray-400 mb-2">ServicePlanner v{APP_VERSION}</p>}
+                <p className="text-xs font-semibold tracking-wide text-gray-400 uppercase mb-2">Danger zone</p>
+                <div className="border border-gray-100 rounded-2xl bg-white divide-y divide-gray-100 mb-5">
+                  <button onClick={async () => { await supabase.auth.signOut(); setMe(null); setData(null); setView({ page: "home" }); }}
+                    className="w-full px-4 py-3.5 flex items-center justify-between card-press">
+                    <span className="flex items-center gap-2.5 text-sm text-gray-800"><LogOut size={16} className="text-gray-400" />Sign out</span>
+                    <ChevronLeft size={16} className="text-gray-300 rotate-180" />
+                  </button>
+                  <button onClick={deleteAccount}
+                    className="w-full px-4 py-3.5 flex items-center justify-between card-press">
+                    <span className="flex items-center gap-2.5 text-sm text-red-600"><Trash2 size={16} className="text-red-400" />Delete account</span>
+                    <ChevronLeft size={16} className="text-red-200 rotate-180" />
+                  </button>
+                </div>
+
+                <p className="text-center text-xs text-gray-400 mb-2">ServicePlanner v{APP_VERSION}</p>
+              </>
+            )}
           </div>
         )}
 
@@ -1465,7 +1539,19 @@ export default function App() {
                 {s.roles.length === 0 && <p className="text-xs text-gray-400">Add roles above first</p>}
                 </div>
                 <div className="flex gap-2 mt-3">
-                  <button onClick={() => autoAssign(s.id, [editKey])}
+                  <button onClick={() => {
+                    const dayAsg = s.assignments[editKey] || {};
+                    const taken = s.roles.filter(r => dayAsg[r]?.email);
+                    if (taken.length) {
+                      ask({
+                        text: `${taken.length} role${taken.length > 1 ? "s are" : " is"} already assigned for ${labelFor(s, editKey)} (${taken.join(", ")}). Auto-assign will clear ${taken.length > 1 ? "these" : "this"} and pick people fresh, including anyone who already confirmed. They'll be unassigned and the new people will be notified. Continue?`,
+                        danger: true, yesLabel: "Clear and reassign",
+                        onYes: () => autoAssign(s.id, [editKey], true),
+                      });
+                    } else {
+                      autoAssign(s.id, [editKey], false);
+                    }
+                  }}
                     className="flex-1 border border-gray-300 text-gray-700 text-xs rounded-lg py-2 flex items-center justify-center gap-1"><RefreshCw size={12} />Auto-assign this day</button>
                   <button onClick={() => sendReminders(s.id, editKey)}
                     className="flex-1 border border-gray-300 text-gray-700 text-xs rounded-lg py-2 flex items-center justify-center gap-1"><Send size={12} />Send reminders</button>
